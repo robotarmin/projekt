@@ -1,0 +1,25 @@
+# PTP grandmaster AES67-hoz, interfeszenkenti systemd szolgaltatas.
+#
+# Telepites:
+#   sudo install -m644 aes67-gm.cfg /etc/linuxptp/aes67-gm.cfg
+#   sudo install -m755 ../tai_offset /usr/local/bin/tai_offset
+#   sudo install -m644 'ptp4l-aes67@.service' /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now ptp4l-aes67@enp0s13f0u3u1
+#
+# Naplo:  journalctl -u ptp4l-aes67@enp0s13f0u3u1 -f
+
+[Unit]
+Description=PTP grandmaster (AES67) a(z) %i interfeszen
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStartPre=/usr/local/bin/tai_offset 37
+ExecStart=/usr/bin/ptp4l -f /etc/linuxptp/aes67-gm.cfg -i %i -m
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
