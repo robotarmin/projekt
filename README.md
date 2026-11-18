@@ -66,7 +66,6 @@ RX 2329 ok 2329 lost 0 late 4 dup 0 | jit 0.04 ms fill 6.0 ms | PTP  L=20.0 ms e
 
 - [Működés](docs/mukodes.md)
 - [Támogatott stream módok (7.2.0: termékdokumentáció)](docs/stream-modok.md)
-- [A küldő beállítása](docs/kuldo-beallitasa.md)
 - [Korlátok](docs/korlatok.md)
 - [Tesztelés](docs/teszteles.md)
 - [A küldő laptop beállítása lépésenként](docs/KULDO.md)
