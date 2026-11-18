@@ -149,7 +149,4 @@ A küldő laptop PTP-grandmaster és PipeWire-beállítását lépésenként a
 
 ## Tesztelés
 
-A vezérlési hurkot szimulált hangkártyával (±150 ppm eltérés, durva pointer-felbontás)
-és szimulált küldővel teszteltük PTP és érkezési módban is: a hurok konvergál, az
-időzítési hiba néhány tíz µs-ra áll be, és stabil állapotban nincs kattanás.
-Valós hálózaton, valódi ptp4l-lel ez még nincs kipróbálva.
+Szimulált küldővel és hangkártyával, majd laptopon és Raspberryn is tesztelve.
