@@ -24,7 +24,11 @@
 #include <alsa/asoundlib.h>
 
 #define DEF_DEVICE   "plughw:Headphones,0"
-#define DEF_PERIODS  4            /* a Pi analog kimenetenek legalabb 4 kell */
+#define DEF_PERIODS  3            /* Csak ezen merve: Raspberry Pi 4 Model B Rev 1.2, bcm2835 Headphones
+                                   * (plughw:Headphones,0), kernel 6.18.50+rpt-rpi-v8, 2026-11-24.
+                                   * A driver legkisebb periodusa 10 ms. 2 periodus: kattogas (xrun
+                                   * nelkul, a firmware oldalan), 3: tiszta, L = 35 ms; 4: L = 45 ms.
+                                   * Mas eszkozon/kernelen ellenorizni; kattogasnal AES67_ALSA_PERIODS=4. */
 #define MAX_CORR     1000e-6
 #define TAU_FAST     1.0          /* PI idoallando szinkron utan, ... */
 #define TAU_SLOW     5.0          /* ... TAU_RAMP alatt erre lassul */

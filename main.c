@@ -48,7 +48,7 @@ static void usage(const char *prog)
 "  -w S       varakozas PTP lockra indulaskor (alap: 15 s)\n"
 "  -L         SAP bejelentesek listazasa (10 s)\n"
 "  -v         a ptp4l teljes naploja\n"
-"Kornyezet: AES67_ALSA_DEVICE, AES67_ALSA_PERIOD (keret), AES67_ALSA_PERIODS (2-16, alap 4),\n"
+"Kornyezet: AES67_ALSA_DEVICE, AES67_ALSA_PERIOD (keret), AES67_ALSA_PERIODS (2-16, alap 3),\n"
 "           AES67_TAI_OFFSET (alap 37), AES67_PTP4L_ARGS\n", prog);
 }
 
