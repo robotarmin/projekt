@@ -59,6 +59,10 @@ struct jitter_buffer {
 
     /* erkezesi ido: x = media_now - (S + n) */
     int64_t  blk_cur, blk_prev, blk_start;
+    /* PTP modban x maximuma (atviteli ido) ugyanazokban a 2 s-os blokkokban */
+    int64_t  xmax_cur, xmax_prev;
+    int64_t  xp_max;               /* erkezesi modban: a PTP-hez mert x maximuma az
+                                      illeszkedo sorozatban (atvaltaskor ez az indulo ertek) */
     int      have_prev;
     int      plaus_total, plaus_good, plaus_done;
 
@@ -160,6 +164,7 @@ static void reset_locked(jitter_buffer *jb)
     jb->have_prev = 0;
     jb->plaus_total = jb->plaus_good = jb->plaus_done = 0;
     jb->ptp_good_frames = 0;
+    jb->xp_max = INT64_MIN;
     jb->frames_since_reset = 0;
     jb->generation++;
     jb->resets++;
@@ -182,6 +187,7 @@ jitter_buffer *jb_create(uint32_t sample_rate, uint8_t channels, uint8_t bytes_p
     jb->mode             = ptp_mode ? JB_MODE_PTP : JB_MODE_ARRIVAL;
     jb->ptp_allowed      = ptp_mode;
     jb->ptp_need_frames  = 2 * (int64_t)sample_rate;
+    jb->xp_max           = INT64_MIN;
 
     size_t want = (size_t)sample_rate * JB_RING_MS / 1000u, rf = 1;
     while (rf < want) rf <<= 1;
@@ -227,6 +233,7 @@ int jb_push(jitter_buffer *jb, const rtp_header *h, uint64_t now_ptp_u, uint64_t
     const int64_t  n         = (int64_t)(h->payload_length / jb->frame_bytes);
     const int64_t  rate      = (int64_t)jb->sample_rate;
     const int64_t  ring      = (int64_t)jb->ring_frames;
+    if (n > ring / 4) return -1;                 /* tul hosszu csomag a gyuruhoz */
 
     pthread_mutex_lock(&jb->lock);
 
@@ -246,6 +253,8 @@ restart:;
         memset(jb->seen, 0, sizeof(jb->seen));
         jb->blk_cur = INT64_MAX;
         jb->blk_prev = INT64_MAX;
+        jb->xmax_cur = INT64_MIN;
+        jb->xmax_prev = INT64_MIN;
         jb->blk_start = media_now;
         /* PTP modban a helyi media orahoz legkozelebbi 64 bites ertek (5.: atfordulasok) */
         S = (jb->mode == JB_MODE_PTP) ? media_now + rtp_ts_diff(ts_adj, (uint32_t)media_now)
@@ -334,6 +343,7 @@ restart:;
     {
         const int64_t x = media_now - (S + n);
         if (x < jb->blk_cur) jb->blk_cur = x;
+        if (x > jb->xmax_cur) jb->xmax_cur = x;
 
         if (jb->mode == JB_MODE_PTP && !jb->plaus_done) {
             jb->plaus_total++;
@@ -366,6 +376,8 @@ restart:;
             jb->blk_prev = jb->blk_cur;
             jb->have_prev = 1;
             jb->blk_cur = INT64_MAX;
+            jb->xmax_prev = jb->xmax_cur;
+            jb->xmax_cur = INT64_MIN;
             jb->blk_start = media_now;
         }
 
@@ -389,8 +401,13 @@ restart:;
         int64_t xp = np - (Sp + n);
         const int64_t k = (xp >= 0 ? xp + rate / 2 : xp - rate / 2) / rate;
         if (k >= -40 && k <= 40) xp -= k * rate;
-        if (xp >= -rate * 30 / 1000 && xp <= rate / 4) jb->ptp_good_frames += n;
-        else jb->ptp_good_frames = 0;
+        if (xp >= -rate * 30 / 1000 && xp <= rate / 4) {
+            jb->ptp_good_frames += n;
+            if (xp > jb->xp_max) jb->xp_max = xp;
+        } else {
+            jb->ptp_good_frames = 0;
+            jb->xp_max = INT64_MIN;
+        }
         if (jb->ptp_good_frames >= jb->ptp_need_frames) {
             /* Atvaltas a puffer eldobasa nelkul: a tartalmat az uj (PTP) idotengelyre
              * toljuk at, igy nincs csend, csak a lejatszasi pont all at egyszer. */
@@ -409,6 +426,9 @@ restart:;
             jb->ready = 1;
             jb->blk_cur = INT64_MAX;
             jb->blk_prev = INT64_MAX;
+            jb->xmax_cur = jb->xp_max;                    /* a mar mert atviteli ido */
+            jb->xmax_prev = INT64_MIN;
+            jb->xp_max = INT64_MIN;
             jb->have_prev = 0;
             jb->blk_start = np;
             jb->have_transit = 0;
@@ -438,7 +458,7 @@ void jb_set_ptp_allowed(jitter_buffer *jb, int allowed)
     if (!jb) return;
     pthread_mutex_lock(&jb->lock);
     jb->ptp_allowed = allowed;
-    if (!allowed) jb->ptp_good_frames = 0;
+    if (!allowed) { jb->ptp_good_frames = 0; jb->xp_max = INT64_MIN; }
     pthread_mutex_unlock(&jb->lock);
 }
 
@@ -516,6 +536,13 @@ void jb_get_stats(jitter_buffer *jb, jb_stats *out)
     out->packet_frames = jb->last_frames;
     out->mode  = jb->mode;
     out->ready = jb->ready && jb->initialized;
+    if (jb->mode == JB_MODE_PTP && jb->initialized) {
+        int64_t xm = jb->xmax_cur > jb->xmax_prev ? jb->xmax_cur : jb->xmax_prev;
+        if (xm != INT64_MIN) {
+            out->have_transit_max = 1;
+            out->transit_max_ms = (double)xm * 1000.0 / (double)jb->sample_rate;
+        }
+    }
     pthread_mutex_unlock(&jb->lock);
 }
 

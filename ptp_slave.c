@@ -28,7 +28,9 @@
 #include <errno.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <fcntl.h>
 #include <sys/prctl.h>
+#include <sys/syscall.h>
 
 #ifndef CLOCK_TAI
 #define CLOCK_TAI 11
@@ -59,6 +61,30 @@ void aes67_set_rt_priority(int prio, const char *who)
             fprintf(stderr, "Megjegyzes: valos ideju prioritas nem allithato (%s). "
                             "Rootkent vagy rtprio limittel futtatva stabilabb.\n", who);
     }
+}
+
+int aes67_thread_create(pthread_t *t, void *(*fn)(void *), void *arg)
+{
+    sigset_t block, old;
+    sigemptyset(&block);
+    sigaddset(&block, SIGINT);
+    sigaddset(&block, SIGTERM);
+    pthread_sigmask(SIG_BLOCK, &block, &old);
+    int rc = pthread_create(t, NULL, fn, arg);     /* az uj szal orokli a maszkot */
+    pthread_sigmask(SIG_SETMASK, &old, NULL);
+    return rc;
+}
+
+void aes67_child_prepare(void)
+{
+    /* csak async-signal-safe hivasok: fork utan, exec elott futunk */
+    sigset_t none;
+    sigemptyset(&none);
+    sigprocmask(SIG_SETMASK, &none, NULL);
+#ifdef SYS_close_range
+    if (syscall(SYS_close_range, 3U, ~0U, 0U) == 0) return;
+#endif
+    for (int fd = 3; fd < 1024; fd++) close(fd);
 }
 
 static void update(long off, int ok)
@@ -197,13 +223,13 @@ static int start_internal(const char *iface)
     argv[n] = NULL;
 
     int pfd[2];
-    if (pipe(pfd) != 0) { perror("pipe"); free(extra); return -1; }
+    if (pipe2(pfd, O_CLOEXEC) != 0) { perror("pipe"); free(extra); return -1; }
     pid_t pid = fork();
     if (pid < 0) { perror("fork"); close(pfd[0]); close(pfd[1]); free(extra); return -1; }
     if (pid == 0) {
         prctl(PR_SET_PDEATHSIG, SIGTERM);
         dup2(pfd[1], 1); dup2(pfd[1], 2);
-        close(pfd[0]); close(pfd[1]);
+        aes67_child_prepare();
         execvp("ptp4l", argv);
         fprintf(stderr, "ptp4l nem indithato: %s (telepitve van a linuxptp?)\n", strerror(errno));
         _exit(127);
@@ -219,13 +245,35 @@ static int start_internal(const char *iface)
 /* ---------------------------------------------------------- */
 /* Kulso mod: pmc 'GET TIME_STATUS_NP'                          */
 
+/* pmc inditasa popen helyett fork/exec-kel: a gyerek nem orokli a socketeket, az ALSA
+ * eszkozt es a munkaszal letiltott jelmaszkjat. */
+static FILE *pmc_open(pid_t *pid)
+{
+    char dom[16];
+    snprintf(dom, sizeof(dom), "%d", g_domain);
+    int pfd[2];
+    if (pipe2(pfd, O_CLOEXEC) != 0) return NULL;
+    pid_t p = fork();
+    if (p < 0) { close(pfd[0]); close(pfd[1]); return NULL; }
+    if (p == 0) {
+        dup2(pfd[1], 1); dup2(pfd[1], 2);
+        aes67_child_prepare();
+        execlp("pmc", "pmc", "-u", "-b", "0", "-d", dom, "GET TIME_STATUS_NP", (char *)NULL);
+        _exit(127);
+    }
+    close(pfd[1]);
+    FILE *f = fdopen(pfd[0], "r");
+    if (!f) { close(pfd[0]); kill(p, SIGTERM); waitpid(p, NULL, 0); return NULL; }
+    *pid = p;
+    return f;
+}
+
 static void *external_thread(void *arg)
 {
     (void)arg;
     while (g_running) {
-        char cmd[96];
-        snprintf(cmd, sizeof(cmd), "pmc -u -b 0 -d %d 'GET TIME_STATUS_NP' 2>&1", g_domain);
-        FILE *f = popen(cmd, "r");
+        pid_t pmc_pid = -1;
+        FILE *f = pmc_open(&pmc_pid);
         long off = 0; int have_off = 0, gm_present = 0;
         if (f) {
             char line[256];
@@ -243,7 +291,8 @@ static void *external_thread(void *arg)
                     if (p) set_gmid(p);
                 }
             }
-            pclose(f);
+            fclose(f);
+            waitpid(pmc_pid, NULL, 0);
         }
         if (have_off) update(off, gm_present);
         for (int i = 0; i < 10 && g_running; i++) usleep(100000);
@@ -274,8 +323,8 @@ int ptp_slave_start(const char *iface, int domain, int mode)
     if (mode == PTP_MODE_INTERNAL && start_internal(iface) != 0) return -1;
 
     g_running = 1;
-    if (pthread_create(&g_thread, NULL,
-                       mode == PTP_MODE_INTERNAL ? internal_thread : external_thread, NULL) != 0) {
+    if (aes67_thread_create(&g_thread,
+                            mode == PTP_MODE_INTERNAL ? internal_thread : external_thread, NULL) != 0) {
         g_running = 0;
         if (g_pid > 0) { kill(g_pid, SIGTERM); waitpid(g_pid, NULL, 0); g_pid = -1; }
         if (g_out) { fclose(g_out); g_out = NULL; }

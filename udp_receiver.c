@@ -23,7 +23,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
-#define RX_BUF_SIZE       9000
+#define RX_BUF_SIZE       65536     /* legnagyobb UDP datagram */
 #define RX_POLL_MS        50
 #define SSRC_RESYNC_PKTS  100
 #define RTCP_MIN_INTERVAL 5.0       /* s, RFC 3550 6.2 minimum */
@@ -284,7 +284,7 @@ udp_receiver *udp_receiver_create(aes67_session *s, jitter_buffer *jb)
     r->sample_rate = sp->sample_rate;
     pthread_mutex_init(&r->lock, NULL);
 
-    r->rtcp_fd = socket(AF_INET, SOCK_DGRAM, 0);
+    r->rtcp_fd = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
     if (r->rtcp_fd >= 0) {
         int tos = DSCP_AF41_TOS;
         setsockopt(r->rtcp_fd, IPPROTO_IP, IP_TOS, &tos, sizeof(tos));
@@ -317,7 +317,7 @@ int udp_receiver_start(udp_receiver *r)
 {
     if (!r || r->running) return -1;
     r->running = 1;
-    if (pthread_create(&r->thread, NULL, rx_thread_main, r) != 0) { r->running = 0; return -1; }
+    if (aes67_thread_create(&r->thread, rx_thread_main, r) != 0) { r->running = 0; return -1; }
     return 0;
 }
 

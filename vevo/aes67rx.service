@@ -1,0 +1,27 @@
+# AES67 vevo (Raspberry Pi).
+#
+# Telepites (a Pi-n, a projekt mappajabol):
+#   sudo install -m644 vevo/aes67rx.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now aes67rx
+#
+# Atirando: az ExecStart eleresi utja, az interfesz, a stream neve.
+# A Pi analog (jack) kimenetehez legalabb 4 periodus (40 ms) kell: 2-vel a kimenet
+# jelzes nelkul kihagy, a hang pattog. Mas eszkoz:
+#   Environment=AES67_ALSA_DEVICE=plughw:<KARTYA>,0
+# Elotte: sudo timedatectl set-ntp false (az orat a ptp4l allitja).
+
+[Unit]
+Description=AES67 vevo
+Wants=network-online.target
+After=network-online.target sound.target tai-offset.service
+
+[Service]
+Type=simple
+Environment=AES67_ALSA_PERIODS=4
+ExecStart=/home/robertarmin/Documents/projekt/aes67rx -i eth0 "sap:Laptop AES67"
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

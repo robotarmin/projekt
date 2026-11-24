@@ -74,7 +74,7 @@ static int sap_decode(const uint8_t *b, size_t n, char *sdp, size_t sdp_size,
 int sap_find(const char *iface, const char *name_filter, int timeout_s,
              int list_only, char *out, size_t out_size)
 {
-    int fd = socket(AF_INET, SOCK_DGRAM, 0);
+    int fd = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
     if (fd < 0) { perror("sap socket"); return -1; }
     int one = 1;
     setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));

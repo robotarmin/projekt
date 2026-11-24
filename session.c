@@ -88,7 +88,7 @@ int sdp_parse_text(const char *text, session_params *out)
     int have_m = 0, foreign = 0, have_c = 0, have_rtpmap = 0, c_ip6 = 0;
     unsigned pt_from_m = 0;
     char enc[16] = {0};
-    int session_level_dir = -1;
+    int session_level_dir = -1, media_level_dir = -1;
 
     const char *p = text;
     char line[2048];
@@ -171,12 +171,14 @@ int sdp_parse_text(const char *text, session_params *out)
             int d = !strcmp(s, "a=recvonly") ? SDP_DIR_RECVONLY :
                     !strcmp(s, "a=sendrecv") ? SDP_DIR_SENDRECV :
                     !strcmp(s, "a=sendonly") ? SDP_DIR_SENDONLY : SDP_DIR_INACTIVE;
-            if (have_m) out->direction = d; else session_level_dir = d;
+            if (have_m) media_level_dir = d; else session_level_dir = d;
         }
         /* minden mas attributum: figyelmen kivul hagyva (RFC 8866) */
     }
-    if (out->direction == SDP_DIR_SENDRECV && session_level_dir >= 0)
-        out->direction = session_level_dir;
+    /* RFC 8866 6.7: a media szintu irany felulirja a session szintut; ha egyik sincs,
+     * az alapertelmezes sendrecv */
+    if (media_level_dir >= 0)        out->direction = media_level_dir;
+    else if (session_level_dir >= 0) out->direction = session_level_dir;
 
     if (!have_m || !have_rtpmap) return SDP_ERR_MISSING;
     if (!have_c) return c_ip6 ? SDP_ERR_SYNTAX : SDP_ERR_MISSING;   /* IPv6 nem tamogatott (6.1.1) */
@@ -281,7 +283,7 @@ aes67_session *session_open(const session_params *p, const char *iface)
                     iface);
     }
 
-    s->fd = socket(AF_INET, SOCK_DGRAM, 0);
+    s->fd = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
     if (s->fd < 0) { perror("socket"); free(s); return NULL; }
 
     int one = 1, zero = 0;

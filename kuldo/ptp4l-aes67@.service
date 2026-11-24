@@ -1,25 +1,27 @@
-# PTP grandmaster AES67-hoz, interfeszenkenti systemd szolgaltatas.
+# PTP grandmaster (AES67) a megadott interfeszen.
 #
 # Telepites:
-#   sudo install -m644 aes67-gm.cfg /etc/linuxptp/aes67-gm.cfg
-#   sudo install -m755 ../tai_offset /usr/local/bin/tai_offset
-#   sudo install -m644 'ptp4l-aes67@.service' /etc/systemd/system/
+#   sudo install -m644 'kuldo/ptp4l-aes67@.service' /etc/systemd/system/
 #   sudo systemctl daemon-reload
 #   sudo systemctl enable --now ptp4l-aes67@enp0s13f0u3u1
 #
-# Naplo:  journalctl -u ptp4l-aes67@enp0s13f0u3u1 -f
+# A ptp4l helye: Arch /usr/bin/ptp4l, Debian/Fedora /usr/sbin/ptp4l (command -v ptp4l).
+# Kezi proba (ptp4l -f ... -m) elott allitsd le ezt a szolgaltatast, kulonben ket ptp4l
+# fut, es a kezi peldany torli a szolgaltatas kezelo-socketjet (/var/run/ptp4l).
 
 [Unit]
 Description=PTP grandmaster (AES67) a(z) %i interfeszen
+# USB-s halozati kartyanal az interfesszel egyutt indul es all le
+BindsTo=sys-subsystem-net-devices-%i.device
+After=sys-subsystem-net-devices-%i.device network-online.target
 Wants=network-online.target
-After=network-online.target
 
 [Service]
 Type=simple
 ExecStartPre=/usr/local/bin/tai_offset 37
 ExecStart=/usr/bin/ptp4l -f /etc/linuxptp/aes67-gm.cfg -i %i -m
 Restart=always
-RestartSec=2
+RestartSec=3
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=multi-user.target sys-subsystem-net-devices-%i.device

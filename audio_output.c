@@ -11,8 +11,13 @@
  * A hangkartya sajat kristalyrol jar, ami nem a PTP ora. Ezert periodusonkent
  * megmerjuk, melyik stream-pozicio szol eppen (beirt pozicio - ALSA delay),
  * osszevetjuk a celallapottal, es egy PI szabalyozo finoman hangolja egy
- * kobos (Catmull-Rom) interpolacios resampler aranyat (+/- 1000 ppm).
+ * ablakozott sinc resampler aranyat (+/- 1000 ppm).
  * Nagy elteres (> 20 ms) eseten azonnali ujraszinkronizalas.
+ *
+ * Resampler: 32 pontos, Kaiser-ablakos (beta 9) sinc, 256 tablazott fazissal es a
+ * fazisok kozotti linearis interpolacioval. Zenen mert hibaja kb. -98 dB (a korabbi
+ * 4 pontos Catmull-Rom interpolacioe -50 dB volt: a magas hangokban hallhato,
+ * "bitcrush"-szeru torzitas, foleg a link offset csusztatasa kozben).
  *
  * Tamogatott kimeneti formatumok: S32_LE, S24_LE, S24_3LE, S16_LE (TPDF ditherrel).
  * Csatornaeltereskor: a kimeneti c. csatorna = stream (c mod N). csatornaja.
@@ -49,6 +54,12 @@
 #define AO_LINK_DEC_MAX_MS   10.0          /* egy lepesben legfeljebb ennyit csokkentunk */
 #define AO_MARGIN_SAFETY_MS  1.5           /* ennyi tartalek mindig marad a legkesobbi csomagig */
 
+/* resampler */
+#define RS_TAPS              32            /* szuro hossza (paros) */
+#define RS_HALF              (RS_TAPS / 2)
+#define RS_PHASES            256           /* tablazott tortpoziciok szama */
+#define RS_BETA              9.0           /* Kaiser-ablak parametere */
+
 struct audio_output {
     aes67_session  *session;
     jitter_buffer  *jb;
@@ -68,6 +79,8 @@ struct audio_output {
 
     int32_t        *src;
     size_t          src_cap;
+    float          *rs_tab;               /* (RS_PHASES + 1) x RS_TAPS egyutthato */
+    float          *rs_val;               /* stream csatornankenti interpolalt ertek */
     uint8_t        *outbuf;
     uint32_t        dither;
 
@@ -76,6 +89,40 @@ struct audio_output {
     pthread_mutex_t lock;
     audio_stats     stats;
 };
+
+/* ---------------------------------------------------------- */
+
+static double bessel_i0(double x)
+{
+    double s = 1.0, t = 1.0;
+    for (int k = 1; k < 60; k++) {
+        t *= (x / (2.0 * k)) * (x / (2.0 * k));
+        s += t;
+        if (t < s * 1e-17) break;
+    }
+    return s;
+}
+
+/* A ph. sor a t = ph / RS_PHASES tortpoziciohoz tartozo egyutthatok: a j. egyutthato
+ * a (k - RS_HALF + 1 + j). bemeneti mintat szorozza, ahol k a pozicio egesz resze.
+ * Vagasi frekvencia a Nyquist-frekvencia, igy t = 0-nal a szuro pontosan atenged. */
+static float *rs_make_table(void)
+{
+    float *tab = malloc(sizeof(float) * (RS_PHASES + 1) * RS_TAPS);
+    if (!tab) return NULL;
+    const double i0b = bessel_i0(RS_BETA);
+    for (int ph = 0; ph <= RS_PHASES; ph++) {
+        const double t = (double)ph / RS_PHASES;
+        for (int j = 0; j < RS_TAPS; j++) {
+            double d = (double)(j - (RS_HALF - 1)) - t;
+            double w = 1.0 - (d / RS_HALF) * (d / RS_HALF);
+            double sn = fabs(d) < 1e-12 ? 1.0 : sin(M_PI * d) / (M_PI * d);
+            tab[ph * RS_TAPS + j] = w <= 0.0 ? 0.0f
+                                  : (float)(sn * bessel_i0(RS_BETA * sqrt(w)) / i0b);
+        }
+    }
+    return tab;
+}
 
 /* ---------------------------------------------------------- */
 
@@ -258,7 +305,15 @@ static double auto_link_ms(audio_output *a, const jb_stats *js)
     double pkt_ms  = (double)(js->packet_frames ? js->packet_frames : a->rate / 1000) * 1000.0 / a->rate;
     double jit_ms  = 4.0 * js->jitter_ms;
     if (jit_ms < 3.0) jit_ms = 3.0;
-    double L = alsa_ms + pkt_ms + jit_ms + (js->mode == JB_MODE_PTP ? 2.0 : 0.0);
+    /* PTP modban a csomag utolso mintaja a timestampje utan transit_max-szal erkezik
+     * (kuldo pufferelese + halozat + a ket gep PTP elterese): ennyivel kesobb kell
+     * lejatszani. Ha meg nincs meres, 2 ms becsult ertek. Erkezesi modban az eltolas
+     * a legkorabbi erkezeshez igazodik, ott csak a jitter szamit. */
+    double transit_ms = 0.0;
+    if (js->mode == JB_MODE_PTP)
+        transit_ms = js->have_transit_max ? (js->transit_max_ms > 0.0 ? js->transit_max_ms : 0.0) + 0.5
+                                          : 2.0;
+    double L = alsa_ms + pkt_ms + jit_ms + transit_ms;
     L = ceil(L * 2.0) / 2.0;                         /* 0.5 ms-ra kerekitve */
     return L > AO_MAX_LINK_MS ? AO_MAX_LINK_MS : L;
 }
@@ -276,7 +331,7 @@ static void *ao_thread_main(void *arg)
     const double off_alpha = dt / 2.0;
     const size_t in_ch = a->in_ch;
 
-    int      synced = 0, first_sync = 1;
+    int      synced = 0, first_sync = 1, sync_mode = -1;
     uint32_t gen = 0;
     int64_t  rpos_i = 0;        /* olvasasi pozicio egesz resze (stream mintaban) */
     double   rpos_f = 0.0;      /* tort resze [0,1) */
@@ -311,6 +366,16 @@ static void *ao_thread_main(void *arg)
             jb_get_stats(a->jb, &js);
             if (a->link_req_ms > 0.0) a->link_ms = a->link_req_ms;
             else if (a->link_ms <= 0.0) a->link_ms = auto_link_ms(a, &js);
+            else if (mode != sync_mode) {
+                /* modvaltas (erkezesi -> PTP): a mar mert atviteli idohoz igazitjuk, hogy
+                 * ne kelljen utana kesesek miatt meg egyszer ujraszinkronizalni */
+                double need = auto_link_ms(a, &js);
+                if (need > a->link_ms) {
+                    a->link_ms = need;
+                    printf("audio: link offset a mert atviteli idohoz igazitva: %.1f ms\n", need);
+                }
+            }
+            sync_mode = mode;
             L = a->link_ms * rate / 1000.0;
 
             snd_pcm_sframes_t d = 0;
@@ -372,10 +437,12 @@ static void *ao_thread_main(void *arg)
         if (r_use > 1.0 + 2 * AO_MAX_CORR) r_use = 1.0 + 2 * AO_MAX_CORR;
         if (r_use < 1.0 - 2 * AO_MAX_CORR) r_use = 1.0 - 2 * AO_MAX_CORR;
 
-        /* --- forrasmintak (Catmull-Rom interpolacio) --- */
-        const size_t need = (size_t)ceil((double)a->period * r_use + rpos_f) + 4;
+        /* --- forrasmintak (ablakozott sinc interpolacio) ---
+         * src[0] = rpos_i - (RS_HALF - 1); egy p poziciohoz a k = floor(p) koruli
+         * RS_TAPS minta kell: k - RS_HALF + 1 ... k + RS_HALF. */
+        const size_t need = (size_t)ceil((double)a->period * r_use + rpos_f) + RS_TAPS + 1;
         if (need > a->src_cap) { synced = 0; continue; }
-        const int64_t base = rpos_i - 1;
+        const int64_t base = rpos_i - (RS_HALF - 1);
         int miss = jb_read(a->jb, base, need, a->src);
         {
             /* erkezesi tartalek: mennyivel elozi meg a legujabb beerkezett minta a most
@@ -389,22 +456,28 @@ static void *ao_thread_main(void *arg)
         }
 
         const size_t ofb = (size_t)a->out_ch * a->out_bps;
-        double p = rpos_f + 1.0;              /* src[1] = rpos_i */
+        double p = rpos_f + (double)(RS_HALF - 1);       /* rpos a src-ben */
         for (size_t i = 0; i < a->period; i++) {
             size_t k = (size_t)p;
-            float t = (float)(p - (double)k);
-            const int32_t *y0 = &a->src[(k - 1) * in_ch], *y1 = &a->src[k * in_ch];
-            const int32_t *y2 = &a->src[(k + 1) * in_ch], *y3 = &a->src[(k + 2) * in_ch];
-            uint8_t *dst = a->outbuf + i * ofb;
-            for (size_t c = 0; c < a->out_ch; c++) {
-                size_t sc = c % in_ch;
-                float v0 = (float)y0[sc], v1 = (float)y1[sc], v2 = (float)y2[sc], v3 = (float)y3[sc];
-                float c1 = 0.5f * (v2 - v0);
-                float c2 = v0 - 2.5f * v1 + 2.0f * v2 - 0.5f * v3;
-                float c3 = 0.5f * (v3 - v0) + 1.5f * (v1 - v2);
-                float v  = ((c3 * t + c2) * t + c1) * t + v1;
-                put_sample(a, dst + c * a->out_bps, v);
+            double fp = (p - (double)k) * RS_PHASES;
+            int ph = (int)fp;
+            if (ph >= RS_PHASES) ph = RS_PHASES - 1;
+            float fa = (float)(fp - ph);
+            const float *c0 = &a->rs_tab[(size_t)ph * RS_TAPS];
+            const float *c1 = c0 + RS_TAPS;
+            const int32_t *s = &a->src[(k - (RS_HALF - 1)) * in_ch];
+            for (size_t sc = 0; sc < in_ch; sc++) {
+                float s0 = 0.0f, s1 = 0.0f;
+                for (int j = 0; j < RS_TAPS; j++) {
+                    float v = (float)s[(size_t)j * in_ch + sc];
+                    s0 += v * c0[j];
+                    s1 += v * c1[j];
+                }
+                a->rs_val[sc] = s0 + (s1 - s0) * fa;
             }
+            uint8_t *dst = a->outbuf + i * ofb;
+            for (size_t c = 0; c < a->out_ch; c++)
+                put_sample(a, dst + c * a->out_bps, a->rs_val[c % in_ch]);
             p += r_use;
         }
         {
@@ -413,7 +486,7 @@ static void *ao_thread_main(void *arg)
             rpos_i += (int64_t)fl;
             rpos_f = adv - fl;
         }
-        jb_advance(a->jb, rpos_i - 2);
+        jb_advance(a->jb, rpos_i - RS_HALF);
 
         int wr = write_period(a);
         if (wr == -2) break;
@@ -569,10 +642,12 @@ audio_output *audio_output_create(aes67_session *s, jitter_buffer *jb,
     }
     if (alsa_setup(a) != 0) goto fail;
 
-    a->src_cap = (size_t)((double)a->period * (1.0 + 2 * AO_MAX_CORR)) + 8;
+    a->src_cap = (size_t)((double)a->period * (1.0 + 2 * AO_MAX_CORR)) + RS_TAPS + 8;
     a->src     = calloc(a->src_cap * a->in_ch, sizeof(int32_t));
     a->outbuf  = calloc((size_t)a->period * a->out_ch, a->out_bps);
-    if (!a->src || !a->outbuf) goto fail;
+    a->rs_val  = calloc(a->in_ch, sizeof(float));
+    a->rs_tab  = rs_make_table();
+    if (!a->src || !a->outbuf || !a->rs_val || !a->rs_tab) goto fail;
 
     a->stats.out_rate = a->rate;
     a->stats.out_channels = a->out_ch;
@@ -590,6 +665,8 @@ fail:
     if (a->pcm) snd_pcm_close(a->pcm);
     free(a->src);
     free(a->outbuf);
+    free(a->rs_val);
+    free(a->rs_tab);
     pthread_mutex_destroy(&a->lock);
     free(a);
     return NULL;
@@ -599,7 +676,7 @@ int audio_output_start(audio_output *a)
 {
     if (!a || a->running) return -1;
     a->running = 1;
-    if (pthread_create(&a->thread, NULL, ao_thread_main, a) != 0) { a->running = 0; return -1; }
+    if (aes67_thread_create(&a->thread, ao_thread_main, a) != 0) { a->running = 0; return -1; }
     return 0;
 }
 
@@ -617,6 +694,8 @@ void audio_output_destroy(audio_output *a)
     if (a->pcm) snd_pcm_close(a->pcm);
     free(a->src);
     free(a->outbuf);
+    free(a->rs_val);
+    free(a->rs_tab);
     pthread_mutex_destroy(&a->lock);
     free(a);
 }
