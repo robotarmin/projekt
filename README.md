@@ -16,4 +16,4 @@ Kapcsolók: `./aes67rx -h`. Szolgáltatásként a vevőn: `vevo/aes67rx.service`
 - **Vétel:** L16/L24, 44,1/48/96 kHz, 1–64 csatorna. Bármilyen packet time, a csomag legfeljebb ~170 ms lehet (G.2.2 leíró: `{44100,48000,96000}-{L16,L24}-{1..8}-{21..4000}`). A vevőpuffer ~700 ms.
 - **Csak vevő:** nem küld, és SIP-et nem használ. A streamet SAP-ból vagy SDP-fájlból veszi; ha a küldő SAP-ban új leírást hirdet, újraindul.
 
- <sub><sup>A kód mesterséges intelligencia segítségével készült. Ezt az egyetemi szabályzatnak megfelelően itt jelölöm. [AI1]</sup></sub>
+ <sub>A kód mesterséges intelligencia segítségével készült. Ezt az egyetemi szabályzatnak megfelelően itt jelölöm. [AI1]</sub>
