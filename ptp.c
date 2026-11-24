@@ -1,4 +1,5 @@
 /*
+ * A kód mesterséges intelligencia segítségével készült. Ezt az egyetemi szabályzatnak megfelelően itt jelölöm. [AI1]
  * PTP timeReceiver (IEEE 1588-2008, AES67 4. es A melleklet) es a media ora (5.).
  *
  * Sajat ptp4l (alapeset):

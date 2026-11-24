@@ -1,3 +1,4 @@
+# A kód mesterséges intelligencia segítségével készült. Ezt az egyetemi szabályzatnak megfelelően itt jelölöm. [AI1]
 # AES67 vevo.
 #   sudo install -m644 vevo/aes67rx.service /etc/systemd/system/
 #   sudo systemctl enable --now aes67rx

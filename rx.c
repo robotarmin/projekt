@@ -1,4 +1,5 @@
 /*
+ * A kód mesterséges intelligencia segítségével készült. Ezt az egyetemi szabályzatnak megfelelően itt jelölöm. [AI1]
  * RTP vetel es RTCP (AES67 6., 10.2).
  *
  *   - IPv4 unicast es multicast (6.1); multicastnal IGMP csatlakozas az interfeszen

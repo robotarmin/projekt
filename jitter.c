@@ -1,4 +1,5 @@
 /*
+ * A kód mesterséges intelligencia segítségével készült. Ezt az egyetemi szabályzatnak megfelelően itt jelölöm. [AI1]
  * Media ora szerint cimzett jitter puffer.
  *
  * Minden minta a 64 bitre kiterjesztett RTP timestamp (minusz mediaclk offset) szerinti

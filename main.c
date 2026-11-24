@@ -1,4 +1,5 @@
 /*
+ * A kód mesterséges intelligencia segítségével készült. Ezt az egyetemi szabályzatnak megfelelően itt jelölöm. [AI1]
  * aes67rx - AES67-2023 vevo.
  *
  *   aes67rx [opciok] <session.sdp | sap | sap:nev>

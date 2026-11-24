@@ -1,4 +1,5 @@
 /*
+ * A kód mesterséges intelligencia segítségével készült. Ezt az egyetemi szabályzatnak megfelelően itt jelölöm. [AI1]
  * tai_offset - a kernel TAI-UTC kulonbsegenek beallitasa / lekerdezese.
  *
  * A PTP (es az AES67 media ora, 5. fejezet) a TAI idoskalan fut. Linuxon a

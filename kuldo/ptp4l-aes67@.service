@@ -1,3 +1,4 @@
+# A kód mesterséges intelligencia segítségével készült. Ezt az egyetemi szabályzatnak megfelelően itt jelölöm. [AI1]
 # PTP grandmaster (AES67) a teszt-adon; a kernel TAI-UTC kulonbseget is beallitja
 # (a PipeWire clock.id = "tai" ehhez kell).
 #   sudo install -m755 tai_offset /usr/local/bin/

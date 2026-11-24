@@ -1,4 +1,5 @@
 /*
+ * A kód mesterséges intelligencia segítségével készült. Ezt az egyetemi szabályzatnak megfelelően itt jelölöm. [AI1]
  * SDP (RFC 8866, RFC 7273) es SAP (RFC 2974).
  *
  *   8.1   ptime: tizedes ponttal, tetszoleges pontossaggal ("1", "0.250", "1.000000", "4.")

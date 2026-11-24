@@ -1,3 +1,4 @@
+# A kód mesterséges intelligencia segítségével készült. Ezt az egyetemi szabályzatnak megfelelően itt jelölöm. [AI1]
 # aes67rx - AES67 vevo.  Fuggosegek: gcc, make, ALSA fejlecek (libasound2-dev / alsa-lib), linuxptp
 CC     ?= gcc
 CFLAGS ?= -O2 -Wall -Wextra

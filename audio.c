@@ -1,4 +1,5 @@
 /*
+ * A kód mesterséges intelligencia segítségével készült. Ezt az egyetemi szabályzatnak megfelelően itt jelölöm. [AI1]
  * ALSA kimenet, a PTP media orahoz kotott lejatszassal (AES67 5., 7.4).
  *
  * A stream S pozicioju mintaja a DAC-on a t(S) = S + off + L idopontban szol (media ora

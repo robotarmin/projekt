@@ -1,4 +1,5 @@
 /*
+ * A kód mesterséges intelligencia segítségével készült. Ezt az egyetemi szabályzatnak megfelelően itt jelölöm. [AI1]
  * aes67rx - AES67-2023 vevo.
  *
  *   sdp.c     SDP (RFC 8866, RFC 7273), SAP felderites (RFC 2974)     AES67 8., 9., E.2
