@@ -1,25 +1,19 @@
-# PTP grandmaster (AES67) a megadott interfeszen.
-#
-# Telepites:
+# PTP grandmaster (AES67) a teszt-adon; a kernel TAI-UTC kulonbseget is beallitja
+# (a PipeWire clock.id = "tai" ehhez kell).
+#   sudo install -m755 tai_offset /usr/local/bin/
 #   sudo install -m644 'kuldo/ptp4l-aes67@.service' /etc/systemd/system/
-#   sudo systemctl daemon-reload
-#   sudo systemctl enable --now ptp4l-aes67@enp0s13f0u3u1
-#
-# A ptp4l helye: Arch /usr/bin/ptp4l, Debian/Fedora /usr/sbin/ptp4l (command -v ptp4l).
-# Kezi proba (ptp4l -f ... -m) elott allitsd le ezt a szolgaltatast, kulonben ket ptp4l
-# fut, es a kezi peldany torli a szolgaltatas kezelo-socketjet (/var/run/ptp4l).
+#   sudo systemctl enable --now ptp4l-aes67@<interfesz>
+# A ptp4l helye: command -v ptp4l (Arch: /usr/bin, Debian: /usr/sbin).
 
 [Unit]
-Description=PTP grandmaster (AES67) a(z) %i interfeszen
-# USB-s halozati kartyanal az interfesszel egyutt indul es all le
+Description=PTP grandmaster (AES67), %i
 BindsTo=sys-subsystem-net-devices-%i.device
 After=sys-subsystem-net-devices-%i.device network-online.target
 Wants=network-online.target
 
 [Service]
-Type=simple
 ExecStartPre=/usr/local/bin/tai_offset 37
-ExecStart=/usr/bin/ptp4l -f /etc/linuxptp/aes67-gm.cfg -i %i -m
+ExecStart=/usr/bin/ptp4l -f /etc/linuxptp/aes67-gm.cfg -i %i -m -q
 Restart=always
 RestartSec=3
 

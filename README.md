@@ -1,57 +1,17 @@
 # aes67rx
 
-AES67-2023 vevő Linuxra (Raspberry Pi, PC): a hálózati AES67 streamet PTP-hez
-időzítve lejátssza egy ALSA hangkártyán. Szoftveres PTP-vel működik.
-
-Telepítés (adó és vevő): [docs/TELEPITES.md](docs/TELEPITES.md)
-
-## Fordítás
+AES67-2023 vevő Linuxra (C, ALSA), és PipeWire-alapú teszt-adó (`kuldo/`).
 
 ```bash
-sudo apt install build-essential libasound2-dev linuxptp
-make                     # aes67rx és tai_offset
+make                                   # függőség: libasound2-dev (alsa-lib), linuxptp
+./aes67rx -i eth0 -L                   # SAP-pal bejelentett streamek
+sudo ./aes67rx -i eth0 "sap:Laptop AES67"
+sudo ./aes67rx -i eth0 -d plughw:0,0 stream.sdp
 ```
 
-## Használat
+Kapcsolók: `./aes67rx -h`. Szolgáltatásként a vevőn: `vevo/aes67rx.service`. Az adó beállítása: `kuldo/` (az install-lépések a fájlok fejlécében).
 
-```bash
-./aes67rx -i eth0 -L                           # bejelentett (SAP) streamek listája
-sudo ./aes67rx -i eth0 "sap:Laptop AES67"      # stream név szerint
-sudo ./aes67rx -i eth0 sap                     # az első bejelentett stream
-sudo ./aes67rx -i eth0 stream.sdp              # SDP fájlból
-```
-
-| Opció | Jelentés |
-|---|---|
-| `-i IFACE` | hálózati interfész (alap: `eth0`) |
-| `-d ESZKÖZ` | ALSA eszköz (alap: `plughw:Headphones,0`) |
-| `-l MS` | fix link offset ms-ban (alap: automatikus) |
-| `-D N` | PTP domain (alap: az SDP szerint) |
-| `-x` | már futó `ptp4l` használata |
-| `-n` | PTP nélkül, érkezési idő alapján |
-| `-T NS` | PTP lock küszöb (alap: 2 000 000 ns) |
-| `-w S` | várakozás a PTP lockra induláskor (alap: 15 s) |
-| `-v` | a ptp4l naplójának kiírása |
-
-Környezeti változók: `AES67_ALSA_DEVICE`, `AES67_ALSA_PERIOD` (periódus keretben),
-`AES67_ALSA_PERIODS` (periódusok száma, alap 4; a Pi jack kimenetén ne legyen 2),
-`AES67_TAI_OFFSET` (alap 37), `AES67_PTP4L_ARGS`, `AES67_PTP_SERVO`.
-
-Szolgáltatásként a vevőn: `vevo/aes67rx.service` és `vevo/tai-offset.service`.
-
-## Státuszsor
-
-```
-RX 9035 ok 9035 lost 0 late 0 dup 0 | jit 0.18 ms fill 12.0 ms | PTP  L=56.0 ms err +9.9 us corr -4.0 ppm xrun 0 resync 0 | PTP +8165 ns
-```
-
-- `PTP` / `ARR` (középen): lejátszás PTP médiaórához, illetve érkezési időhöz kötve
-- `L`: link offset, `err`: időzítési hiba, `corr`: hangkártya-sebesség korrekció
-- `PTP +… ns` / `NINCS LOCK` (a végén): a vevő PTP-szinkronja
-
-## Dokumentáció
-
-- [Telepítés és hibaelhárítás](docs/TELEPITES.md)
-- [Működés és korlátok](docs/mukodes.md)
-- [Támogatott stream módok](docs/stream-modok.md)
-- `tools/rtpcheck.py`: a beérkező RTP-időbélyegek ellenőrzése
+- **PTP:** a vevő saját `ptp4l`-t indít. Ha a hálózati kártya tud hardveres időbélyegzést, akkor `-H` módban, és a médiaórát közvetlenül a kártya órájából olvassa. Ha nem, akkor szoftveres módban fut (ilyenkor az NTP legyen kikapcsolva). Már futó ptp4l esetén: `-x`.
+- **Lejátszás:** a PTP-médiaórához kötve, állandó link offsettel. Ha a küldő nem PTP-szinkron, érkezési idő alapján játszik (ez nem AES67-mód).
+- **Vétel:** L16/L24, 44,1/48/96 kHz, 1–64 csatorna. Bármilyen packet time, a csomag legfeljebb ~170 ms lehet (G.2.2 leíró: `{44100,48000,96000}-{L16,L24}-{1..8}-{21..4000}`). A vevőpuffer ~700 ms.
+- **Csak vevő:** nem küld, és SIP-et nem használ. A streamet SAP-ból vagy SDP-fájlból veszi; ha a küldő SAP-ban új leírást hirdet, újraindul.

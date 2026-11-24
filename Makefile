@@ -1,39 +1,20 @@
-# aes67rx - AES67-2023 vevo
-#
-#   make            release build
-#   make debug      ASan + UBSan, -O0 -g
-#   make clean
-#
-# Fuggosegek (Raspberry Pi OS / Debian):
-#   sudo apt install build-essential libasound2-dev linuxptp
+# aes67rx - AES67 vevo.  Fuggosegek: gcc, make, ALSA fejlecek (libasound2-dev / alsa-lib), linuxptp
+CC     ?= gcc
+CFLAGS ?= -O2 -Wall -Wextra
+OBJS    = main.o sdp.o ptp.o rx.o jitter.o audio.o
 
-CC      ?= gcc
-CFLAGS  ?= -O2 -Wall -Wextra -pthread
-LDFLAGS ?= -pthread
-LDLIBS  ?= -lasound -lm
+all: aes67rx tai_offset
 
-TARGET := aes67rx
-SRCS   := rtp.c session.c sap.c ptp_slave.c jitter.c udp_receiver.c audio_output.c main.c
-OBJS   := $(SRCS:.c=.o)
-HDRS   := aes67.h
+aes67rx: $(OBJS)
+	$(CC) $(LDFLAGS) -o $@ $(OBJS) -lasound -lm -pthread
 
-.PHONY: all clean debug
-
-all: $(TARGET) tai_offset
+%.o: %.c aes67.h
+	$(CC) $(CFLAGS) -pthread -c -o $@ $<
 
 tai_offset: tai_offset.c
-	$(CC) -O2 -Wall -Wextra -o $@ $<
-
-$(TARGET): $(OBJS)
-	$(CC) $(LDFLAGS) -o $@ $^ $(LDLIBS)
-
-%.o: %.c $(HDRS)
-	$(CC) $(CFLAGS) -c -o $@ $<
+	$(CC) $(CFLAGS) -o $@ $<
 
 clean:
-	rm -f $(OBJS) $(TARGET) tai_offset
+	rm -f $(OBJS) aes67rx tai_offset
 
-debug:
-	$(MAKE) clean
-	$(MAKE) CFLAGS="-O0 -g -Wall -Wextra -pthread -fsanitize=address,undefined -fno-omit-frame-pointer" \
-	        LDFLAGS="-pthread -fsanitize=address,undefined" all
+.PHONY: all clean
