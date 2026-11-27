@@ -40,7 +40,7 @@ static void usage(const char *prog)
 "Hasznalat: %s [opciok] <session.sdp | sap | sap:nev>\n"
 "  sap / sap:nev  az elso / az adott nevu (s=, reszlet is eleg) SAP-pal bejelentett stream\n"
 "  -i IFACE   halozati interfesz (alap: eth0)\n"
-"  -d ESZKOZ  ALSA eszkoz (alap: $AES67_ALSA_DEVICE vagy plughw:Headphones,0)\n"
+"  -d ESZKOZ  ALSA eszkoz (alap: $AES67_ALSA_DEVICE vagy plughw:sndrpihifiberry,0)\n"
 "  -l MS      rogzitett link offset (alap: automatikus)\n"
 "  -D N       PTP domain (alap: az SDP szerint, kulonben 0)\n"
 "  -x         mar futo ptp4l hasznalata (pmc)\n"
@@ -49,7 +49,7 @@ static void usage(const char *prog)
 "  -w S       varakozas PTP lockra indulaskor (alap: 15 s)\n"
 "  -L         SAP bejelentesek listazasa (10 s)\n"
 "  -v         a ptp4l teljes naploja\n"
-"Kornyezet: AES67_ALSA_DEVICE, AES67_ALSA_PERIOD (keret), AES67_ALSA_PERIODS (2-16, alap 3),\n"
+"Kornyezet: AES67_ALSA_DEVICE, AES67_ALSA_PERIOD (keret, alap 64), AES67_ALSA_PERIODS (2-16, alap 2),\n"
 "           AES67_TAI_OFFSET (alap 37), AES67_PTP4L_ARGS\n", prog);
 }
 

@@ -24,12 +24,16 @@
 #include <math.h>
 #include <alsa/asoundlib.h>
 
-#define DEF_DEVICE   "plughw:Headphones,0"
-#define DEF_PERIODS  3            /* Csak ezen merve: Raspberry Pi 4 Model B Rev 1.2, bcm2835 Headphones
-                                   * (plughw:Headphones,0), kernel 6.18.50+rpt-rpi-v8, 2026-11-24.
-                                   * A driver legkisebb periodusa 10 ms. 2 periodus: kattogas (xrun
-                                   * nelkul, a firmware oldalan), 3: tiszta, L = 35 ms; 4: L = 45 ms.
-                                   * Mas eszkozon/kernelen ellenorizni; kattogasnal AES67_ALSA_PERIODS=4. */
+#define DEF_DEVICE   "plughw:sndrpihifiberry,0"
+#define DEF_PERIOD   64           /* keret 48 kHz-en (1.33 ms) */
+#define DEF_PERIODS  2            /* Csak ezen merve: Raspberry Pi 4 Model B Rev 1.2, I2S HifiBerry DAC
+                                   * (PCM5102A, dtoverlay=hifiberry-dac), kernel 6.18.50+rpt-rpi-v8,
+                                   * 2026-11-27. 128x3: L = 14 ms; 128x2: 10.5 ms; 64x3: 9.5 ms;
+                                   * 64x2 (puffer 2.67 ms): L = 8-11 ms (a mert atvitel szerint), 2 perc
+                                   * teljes CPU-terheles alatt sem volt xrun/keses.
+                                   * Beepitett jack (plughw:Headphones,0): a driver legkisebb periodusa
+                                   * 10 ms, 2 periodus kattog (xrun nelkul, a firmware oldalan), ezert ott
+                                   * AES67_ALSA_PERIODS=3 kell (L = 35 ms). */
 #define MAX_CORR     1000e-6
 #define TAU_FAST     1.0          /* PI idoallando szinkron utan, ... */
 #define TAU_SLOW     5.0          /* ... TAU_RAMP alatt erre lassul */
@@ -125,7 +129,7 @@ static int alsa_setup(audio_t *a)
     }
 
     const char *e = getenv("AES67_ALSA_PERIOD"), *ep = getenv("AES67_ALSA_PERIODS");
-    snd_pcm_uframes_t per = e && atoi(e) > 0 ? (snd_pcm_uframes_t)atoi(e) : 128 * a->rate / 48000;
+    snd_pcm_uframes_t per = e && atoi(e) > 0 ? (snd_pcm_uframes_t)atoi(e) : DEF_PERIOD * a->rate / 48000;
     unsigned nper = ep && atoi(ep) >= 2 && atoi(ep) <= 16 ? (unsigned)atoi(ep) : DEF_PERIODS;
     if ((rc = snd_pcm_hw_params_set_period_size_near(a->pcm, hw, &per, 0)) < 0) goto err;
     snd_pcm_uframes_t buf = per * nper;

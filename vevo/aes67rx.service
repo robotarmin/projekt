@@ -11,7 +11,12 @@ Wants=network-online.target
 After=network-online.target sound.target
 
 [Service]
-ExecStart=/home/robertarmin/Documents/projekt/aes67rx -i eth0 "sap:Laptop AES67"
+ExecStart=/home/aes67/projekt/aes67rx -i eth0 "sap:Laptop AES67"
+# I2S HifiBerry DAC, 64x2 keretes ALSA-puffer (2.67 ms). Beepitett jacknel:
+#   AES67_ALSA_DEVICE=plughw:Headphones,0, AES67_ALSA_PERIOD=480, AES67_ALSA_PERIODS=3
+Environment=AES67_ALSA_DEVICE=plughw:sndrpihifiberry,0
+Environment=AES67_ALSA_PERIOD=64
+Environment=AES67_ALSA_PERIODS=2
 Restart=always
 RestartSec=3
 
